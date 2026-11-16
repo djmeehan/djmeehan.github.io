@@ -2,6 +2,8 @@
 """Local review page for the games site: play each game, see the checks, sign it off and publish, all in the browser.
 
 Run:  python3 tools/review.py     (opens http://127.0.0.1:8765/__review/ ; Ctrl-C to stop)
+      python3 tools/review.py --lan  also serves the games (and only the games: never the review page) to phones on your Wi-Fi,
+                                     so multiplayer games can be tried on real phones before sign-off
 
 Sign-off also needs you to click Approve in a macOS dialog, which is what stops anything but a person at this Mac approving a game.
 It writes the same signoff.json as tools/signoff.py. Publish commits signoff.json and pushes; guardrails' pre-push gate still runs.
@@ -13,6 +15,7 @@ import http.server
 import json
 import pathlib
 import secrets
+import socket
 import socketserver
 import subprocess
 import sys
@@ -204,8 +207,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         super().end_headers()
 
+    def local_only(self):
+        # the review page and its sign-off endpoints answer only to this Mac, even when the games are shared on the Wi-Fi
+        if self.client_address[0] in ("127.0.0.1", "::1", "::ffff:127.0.0.1"):
+            return False
+        self.send_json(403, {"error": "the review page is only available on the Mac that runs it"})
+        return True
+
     def do_GET(self):
         p = self.path.split("?")[0]
+        if p.startswith("/__review") and self.local_only():
+            return
         if p == "/__review/":
             return self.send_page(LIST_BODY, LIST_SCRIPT)
         if p == "/__review/api/status":
@@ -221,6 +233,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         super().do_GET()
 
     def do_POST(self):
+        if self.local_only():
+            return
         origin = self.headers.get("Origin", "")
         if self.headers.get("X-Token") != TOKEN or origin != f"http://127.0.0.1:{PORT}" or self.headers.get("Host") != f"127.0.0.1:{PORT}":
             return self.send_json(403, {"error": "forbidden"})
@@ -240,11 +254,23 @@ class Server(socketserver.ThreadingMixIn, http.server.HTTPServer):
     daemon_threads = True
 
 
+def lan_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("10.255.255.255", 1))
+        return s.getsockname()[0]
+    except OSError:
+        return None
+    finally:
+        s.close()
+
+
 def main():
     global PORT
+    lan = "--lan" in sys.argv
     for port in range(8765, 8775):
         try:
-            srv = Server(("127.0.0.1", port), Handler)
+            srv = Server(("0.0.0.0" if lan else "127.0.0.1", port), Handler)
             PORT = port
             break
         except OSError:
@@ -253,6 +279,12 @@ def main():
         sys.exit("no free port in 8765-8774")
     url = f"http://127.0.0.1:{PORT}/__review/"
     print(f"Review page: {url}   (Ctrl-C to stop)")
+    if lan:
+        ip = lan_ip()
+        if ip:
+            print(f"On phones on the same Wi-Fi, open: http://{ip}:{PORT}/games/<game>/   e.g. {', '.join(f'http://{ip}:{PORT}/games/{g}/' for g in games()[-1:])}")
+        else:
+            print("Could not work out this Mac's Wi-Fi address; find it in System Settings > Wi-Fi > Details.")
     if "--no-open" not in sys.argv:
         webbrowser.open(url)
     try:

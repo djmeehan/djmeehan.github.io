@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Snowball Showdown">
+  <meta name="theme-color" content="#0b1637">
+  <title>Fudge's Snowball Showdown</title>
+  <style>
+    :root { --bg: #0b1637; --card: rgba(10, 20, 55, 0.92); --gold: #ffd166; --text: #f2e9e0; --soft: #b9c8ee; --good: #6bdc8f; --bad: #ff8a8a; }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { margin: 0; height: 100%; height: 100dvh; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, "Segoe UI", sans-serif; overflow: hidden; overscroll-behavior: none; }
+    body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+    canvas#game { position: fixed; inset: 0; width: 100%; height: 100%; height: 100dvh; display: block; touch-action: none; }
+    .bar { position: fixed; top: max(8px, env(safe-area-inset-top)); display: flex; gap: 8px; z-index: 5; }
+    #bar-l { left: max(8px, env(safe-area-inset-left)); }
+    #bar-r { right: max(8px, env(safe-area-inset-right)); }
+    .pill, .bar a, .bar button { font: inherit; font-size: 14px; color: var(--text); background: rgba(11, 22, 55, 0.78); border: 1px solid rgba(255, 209, 102, 0.6); border-radius: 999px; padding: 6px 14px; text-decoration: none; cursor: pointer; }
+    .bar button:hover, .bar a:hover, .btn:hover { background: rgba(255, 209, 102, 0.25); }
+    #zoom { position: fixed; right: max(8px, env(safe-area-inset-right)); bottom: max(10px, env(safe-area-inset-bottom)); display: none; flex-direction: column; gap: 8px; z-index: 5; }
+    #zoom button { width: 46px; height: 46px; border-radius: 50%; font-size: 22px; line-height: 1; padding: 0; }
+    .screen { position: fixed; inset: 0; display: none; overflow-y: auto; z-index: 4; padding: max(52px, env(safe-area-inset-top)) 16px 24px; background: rgba(6, 12, 40, 0.8); }
+    .screen.on { display: block; }
+    .wrap { max-width: 760px; margin: 0 auto; }
+    h1 { margin: 0 0 4px; font-weight: 800; color: var(--gold); text-align: center; font-size: clamp(26px, 6vw, 44px); text-shadow: 0 2px 0 rgba(5, 10, 35, 0.7); }
+    h2 { margin: 0 0 10px; color: var(--gold); font-size: 24px; }
+    p { margin: 6px 0; line-height: 1.4; }
+    .sub { text-align: center; color: var(--soft); margin-bottom: 16px; }
+    .card { background: var(--card); border: 1px solid rgba(255, 209, 102, 0.45); border-radius: 16px; padding: 14px 16px; margin: 12px 0; }
+    .btn { font: inherit; font-weight: 700; font-size: 17px; color: #14110f; background: var(--gold); border: 0; border-radius: 12px; padding: 12px 20px; cursor: pointer; }
+    .btn.alt { color: var(--text); background: transparent; border: 1px solid rgba(255, 209, 102, 0.7); }
+    .btn:disabled { opacity: 0.4; cursor: default; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .menu { display: grid; gap: 12px; margin-top: 8px; }
+    input[type=text] { font: inherit; font-size: 17px; color: var(--text); background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 209, 102, 0.5); border-radius: 10px; padding: 10px 12px; width: 100%; -webkit-user-select: text; user-select: text; }
+    label { display: block; font-size: 13px; color: var(--soft); margin: 8px 0 4px; }
+    .chars { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    .char { background: rgba(255, 255, 255, 0.06); border: 2px solid transparent; border-radius: 14px; padding: 8px 4px; text-align: center; cursor: pointer; font: inherit; color: var(--text); }
+    .char canvas { width: 64px; height: 64px; border-radius: 50%; display: block; margin: 0 auto 4px; background: #243d86; }
+    .char.sel { border-color: var(--gold); background: rgba(255, 209, 102, 0.15); }
+    .char.taken { opacity: 0.35; cursor: not-allowed; }
+    .char small { display: block; color: var(--soft); font-size: 11px; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+    .tab { font: inherit; font-size: 14px; color: var(--text); background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 209, 102, 0.4); border-radius: 999px; padding: 6px 14px; cursor: pointer; }
+    .tab.sel { background: var(--gold); color: #14110f; font-weight: 700; }
+    .tab.ok::after { content: " \2713"; color: var(--good); }
+    .tab.sel.ok::after { color: #0a5a24; }
+    .qrbox { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+    .qrbox canvas { width: min(300px, 62vw); height: min(300px, 62vw); background: #fff; border-radius: 10px; image-rendering: pixelated; }
+    .qrbox .how { flex: 1; min-width: 200px; }
+    #host-me { display: inline-flex; align-items: center; gap: 8px; }
+    .linkrow { display: flex; gap: 8px; margin-top: 8px; }
+    .linkrow input { font-size: 12px; }
+    .status { color: var(--soft); min-height: 1.3em; }
+    .status.good { color: var(--good); }
+    .status.bad { color: var(--bad); }
+    ol.steps { margin: 6px 0 6px 20px; padding: 0; line-height: 1.5; }
+    .roster { display: flex; flex-wrap: wrap; gap: 10px; }
+    .who { display: flex; align-items: center; gap: 8px; background: rgba(255, 255, 255, 0.07); border-radius: 12px; padding: 6px 12px 6px 6px; }
+    .who canvas { width: 36px; height: 36px; border-radius: 50%; background: #243d86; }
+    /* short screens (a phone held sideways): tighter menus, the three buttons side by side */
+    @media (max-height: 600px) {
+      .screen { padding-top: max(44px, env(safe-area-inset-top)); padding-bottom: 12px; }
+      h1 { font-size: clamp(22px, 5vw, 32px); }
+      .sub { margin-bottom: 8px; font-size: 13px; }
+      .card { padding: 10px 12px; margin: 8px 0; }
+      .chars { gap: 6px; }
+      .char canvas { width: 48px; height: 48px; }
+      .char small { display: none; }
+      .menu { grid-template-columns: repeat(3, 1fr); gap: 8px; }
+      .btn { font-size: 14px; padding: 10px 8px; }
+      label { margin: 4px 0 2px; }
+      input[type=text] { padding: 8px 10px; }
+      .qrbox canvas { width: min(240px, 46vh); height: min(240px, 46vh); }
+      #ios-tip { font-size: 12px; }
+    }
+    #rotate { display: none; position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); padding: 8px 14px; border-radius: 999px; background: rgba(11, 22, 55, 0.9); font-size: 14px; z-index: 6; white-space: nowrap; }
+    @media (orientation: portrait) { #rotate.show { display: block; } }
+    #scanner { display: none; position: fixed; inset: 0; background: #000; z-index: 9; }
+    #scanner.on { display: block; }
+    #scanner video { width: 100%; height: 100%; object-fit: cover; }
+    #scanner button { position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); }
+  </style>
+</head>
+<body>
+  <canvas id="game" aria-label="Fudge's Snowball Showdown: take turns throwing snowballs across a snowy rooftop city"></canvas>
+  <div class="bar" id="bar-l"><a href="../../">&larr; Games</a></div>
+  <div class="bar" id="bar-r"><button id="fs" type="button" hidden aria-label="Full screen">&#x26F6; Full screen</button><button id="mute" type="button">Sound on</button><button id="menu" type="button" hidden>Menu</button></div>
+  <div id="zoom"><button id="zin" type="button" class="pill" aria-label="Zoom in">+</button><button id="zout" type="button" class="pill" aria-label="Zoom out">&minus;</button><button id="zfit" type="button" class="pill" aria-label="See the whole city">&#x2922;</button></div>
+  <div id="rotate">Turn your phone sideways for a bigger view</div>
+
+  <section class="screen on" id="s-title"><div class="wrap">
+    <h1>Fudge's Snowball Showdown</h1>
+    <p class="sub">2 to 4 players, one phone each. Take turns throwing snowballs across the rooftops. Three hits and your Christmas spirit is gone!</p>
+    <div class="card">
+      <label for="name">Your name</label>
+      <input type="text" id="name" maxlength="14" placeholder="Your name" autocomplete="off">
+      <label>Choose your character</label>
+      <div class="chars" id="chars-title"></div>
+    </div>
+    <div class="menu">
+      <button class="btn" id="b-host" type="button">Host a game (2 to 4 players)</button>
+      <button class="btn alt" id="b-join" type="button">Join a friend's game</button>
+      <button class="btn alt" id="b-practice" type="button">Practice against the computer</button>
+    </div>
+    <p class="sub" id="ios-tip" hidden>On an iPhone: tap Share, then <b>Add to Home Screen</b>, and open the game from there to play full screen.</p>
+    <p class="sub" style="margin-top:18px">Everyone plays on the same Wi-Fi. One person hosts and friends join by scanning a QR code with their phone's camera.</p>
+  </div></section>
+
+  <section class="screen" id="s-host"><div class="wrap">
+    <h2>Host a game</h2>
+    <div class="card">
+      <div class="row"><b>You:</b><span id="host-me"></span></div>
+      <div class="roster" id="host-roster" style="margin-top:8px"></div>
+    </div>
+    <div class="card">
+      <div class="tabs" id="slot-tabs"></div>
+      <div class="qrbox">
+        <canvas id="qr" width="300" height="300"></canvas>
+        <div class="how">
+          <ol class="steps">
+            <li>Your friend opens their phone's <b>camera</b> and points it at this code, then taps the link.</li>
+            <li>They pick a name and character, and their screen shows a code back.</li>
+            <li>Scan <i>their</i> code with your camera, or paste the link below.</li>
+          </ol>
+          <div class="status" id="slot-status"></div>
+        </div>
+      </div>
+      <div class="linkrow"><input type="text" id="offer-link" readonly><button class="btn alt" id="copy-offer" type="button">Copy link</button></div>
+      <label for="answer-in">Their code (paste the link they show you)</label>
+      <div class="linkrow"><input type="text" id="answer-in" placeholder="Paste their link here" autocomplete="off"><button class="btn alt" id="answer-go" type="button">Connect</button><button class="btn alt" id="scan-go" type="button" hidden>Scan</button></div>
+    </div>
+    <div class="row"><button class="btn" id="host-start" type="button" disabled>Start game</button><button class="btn alt" id="host-back" type="button">Back</button><span class="status" id="host-msg"></span></div>
+  </div></section>
+
+  <section class="screen" id="s-join"><div class="wrap">
+    <h2>Join a game</h2>
+    <div class="card" id="join-paste">
+      <p>Open the host's QR code with your phone's <b>camera</b> and tap the link. Or paste the host's link here:</p>
+      <div class="linkrow"><input type="text" id="offer-in" placeholder="Paste the host's link" autocomplete="off"><button class="btn alt" id="offer-go" type="button">Join</button></div>
+    </div>
+    <div class="card" id="join-answer" hidden>
+      <p><b>Now show this to the host.</b> They scan it with their camera (or you can send them the link).</p>
+      <div class="qrbox"><canvas id="qr2" width="300" height="300"></canvas><div class="how"><div class="status" id="join-status"></div></div></div>
+      <div class="linkrow" id="join-linkrow"><input type="text" id="answer-link" readonly><button class="btn alt" id="copy-answer" type="button">Copy link</button></div>
+    </div>
+    <div class="card">
+      <label for="jname">Your name</label>
+      <input type="text" id="jname" maxlength="14" placeholder="Your name" autocomplete="off">
+      <label>Choose your character</label>
+      <div class="chars" id="chars-join"></div>
+    </div>
+    <div class="row"><button class="btn alt" id="join-back" type="button">Back</button></div>
+  </div></section>
+
+  <section class="screen" id="s-over"><div class="wrap">
+    <h1 id="over-title">Winner!</h1>
+    <p class="sub" id="over-sub"></p>
+    <div class="card"><div class="roster" id="over-board"></div></div>
+    <div class="row" style="justify-content:center"><button class="btn" id="over-again" type="button">Next round</button><button class="btn alt" id="over-quit" type="button">Quit</button></div>
+    <p class="sub" id="over-wait"></p>
+  </div></section>
+
+  <div id="scanner"><video id="video" playsinline muted></video><button class="btn" id="scan-stop" type="button">Cancel</button></div>
+
+  <script src="logic.js"></script>
+  <script src="qr.js"></script>
+  <script src="signal.js"></script>
+  <script src="net.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>

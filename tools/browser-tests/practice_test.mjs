@@ -1,0 +1,54 @@
+import { launch, sleep, check, done } from './cdplib.mjs';
+const S = process.argv[2];
+const B = await launch(9341);
+const URL = 'http://127.0.0.1:8790/games/fudges-snowball-showdown/#debug';
+const t = await B.tab(URL, 960, 540);
+await t.shot(S + '/ss_title.png');
+check(await t.ev(`document.getElementById('s-title').classList.contains('on')`), 'the title screen shows');
+check(await t.ev(`document.querySelectorAll('#chars-title .char').length`) === 4, 'four characters to choose from');
+await t.ev(`(()=>{const n=document.getElementById('name'); n.value='Derek'; n.dispatchEvent(new Event('input'));})()`);
+await t.clickSel('#chars-title .char:nth-child(3)');   // Molly
+check(await t.ev(`window.__ssd.profile.char`) === 'molly' && await t.ev(`window.__ssd.profile.name`) === 'Derek', 'name and character are chosen');
+await t.clickSel('#b-practice');
+check(await t.waitFor(`window.__ssd.G.s && window.__ssd.role==='practice'`), 'practice starts');
+await sleep(600);
+await t.shot(S + '/ss_game1.png');
+const info = await t.ev(`(()=>{const g=window.__ssd.G; return JSON.stringify({n:g.s.n, names:g.s.players.map(p=>p.name+':'+p.char), me:g.me, turn:g.s.turn, wind:g.s.wind, z:window.__ssd.cam.z})})()`);
+console.log(info);
+const st = JSON.parse(info);
+check(st.n === 3 && st.names[0] === 'Derek:molly', 'my name and character are in the match');
+// zoom
+const z0 = await t.ev(`window.__ssd.cam.z`);
+await t.clickSel('#zin'); await t.clickSel('#zin');
+const z1 = await t.ev(`window.__ssd.cam.z`);
+check(z1 > z0 * 1.5, `the + button zooms in (${z0.toFixed(2)} -> ${z1.toFixed(2)})`);
+await t.clickSel('#zfit'); await sleep(200);
+const zfit = await t.ev(`window.__ssd.cam.z`);
+check(zfit < 0.75 && zfit >= 0.35, 'the fit button shows the whole city (zoom ' + zfit.toFixed(2) + ')');
+await t.shot(S + '/ss_fit.png');
+await t.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: 480, y: 270, deltaX: 0, deltaY: -300 });
+await sleep(100);
+check(await t.ev(`window.__ssd.cam.z`) > zfit, 'the mouse wheel zooms in');
+// my turn: pull a slingshot with the mouse and let go
+await t.ev(`window.__ssd.cam.auto=true; 1`);
+const myTurn = await t.waitFor(`window.__ssd.G.s.turn===window.__ssd.G.me && !window.__ssd.G.anim && !window.__ssd.G.queue.length`, 20000);
+check(myTurn, 'it becomes my turn');
+await sleep(1200);
+const aimBefore = await t.ev(`JSON.stringify(window.__ssd.G.aim)`);
+await t.mouse('mousePressed', 400, 300); await t.mouse('mouseMoved', 330, 340, { buttons: 1 }); await t.mouse('mouseMoved', 300, 360, { buttons: 1 });
+await sleep(150);
+await t.shot(S + '/ss_aim.png');
+const live = JSON.parse(await t.ev(`JSON.stringify(window.__ssd.G.aim)`));
+check(live.angle > 0 && live.angle < 90 && live.power > 10, `pulling back down-left aims up-right (angle ${live.angle.toFixed(0)}, power ${live.power.toFixed(0)})`);
+await t.mouse('mouseReleased', 300, 360);
+check(await t.waitFor(`window.__ssd.G.anim!==null`, 3000), 'letting go throws the snowball');
+await sleep(900);
+await t.shot(S + '/ss_flight.png');
+const throwsBefore = await t.ev(`window.__ssd.H.auth.throws`);
+check(throwsBefore >= 1, 'the host counted my throw');
+check(await t.ev(`JSON.stringify(window.__ssd.H.auth.players[0].last)`) !== 'null', 'my last throw is remembered');
+// let the computer players take their turns and a round play out
+check(await t.waitFor(`window.__ssd.G.s.turn===window.__ssd.G.me && !window.__ssd.G.anim && window.__ssd.G.s.phase==='aim'`, 30000), 'the computer players take their turns and it comes back to me');
+await t.shot(S + '/ss_game2.png');
+B.kill();
+process.exit(done('practice test') ? 1 : 0);

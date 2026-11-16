@@ -14,6 +14,7 @@ Derek's browser games and apps, published with GitHub Pages at https://djmeehan.
 
 - `games/demo/`: Ball Maze.
 - `games/fudges-festive-frenzy/`: a Christmas side-scroller starring Fudge the hamster (photo cutouts in `assets/`, rules in `logic.js` with tests in `test.js`, drawing and input in `main.js`). Controls: hold the mouse or a finger to run toward it, press high up to jump, double-tap (or press E) to lunge and steal a present back from an elf. Each round has a clock and a delivery quota (presents minus what may be lost); miss the quota when time runs out and it is game over, clear the round early for a time bonus; arrows/WASD and Space also work. `index.html#bot=12` autoplays 12 seconds ahead (used for screenshots).
+- `games/fudges-snowball-showdown/`: 2 to 4 players on their own phones throw snowballs across a Christmas rooftop city. Three hits take a player's Christmas spirit from 100% to 0%. Players type a name and pick Fudge, Smudge, Molly or Remy (face photos in `assets/`). One phone hosts and runs the rules (`logic.js`); friends join by scanning QR codes with their camera (`qr.js`, `signal.js`, `net.js`: direct phone-to-phone WebRTC, no server, same Wi-Fi). Controls: pull back anywhere like a slingshot; angle, power, wind and your last throw are on screen. Pinch or use the mouse wheel / buttons to zoom; two fingers move the view. `main.js` draws everything. Browser tests: `tools/browser-tests/run.sh`.
 
 ## Adding a game
 
