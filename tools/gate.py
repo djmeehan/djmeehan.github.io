@@ -29,7 +29,7 @@ def main():
         problems.append("uncommitted changes in games/, index.html, games.json or signoff.json: commit them, then sign off")
     rc, raw = git("show", "HEAD:signoff.json")
     signed = json.loads(raw) if rc == 0 else {}
-    rc, games = git("ls-tree", "--name-only", "HEAD", "games/")
+    rc, games = git("ls-tree", "-d", "--name-only", "HEAD", "games/")
     for path in games.splitlines():
         game = path.split("/", 1)[1]
         have = tree_hash(game)
