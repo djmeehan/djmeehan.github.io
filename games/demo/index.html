@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+  <title>Demo: Ball Maze</title>
+  <style>
+    :root { --bg: #14110f; --wall: #f2b36b; --ball: #ffffff; --goal: #5fd38d; --text: #f2e9e0; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; overflow: hidden; }
+    body { display: flex; flex-direction: column; align-items: center; }
+    header { display: flex; gap: 1.5rem; align-items: center; justify-content: center; padding: 0.6rem 1rem; font-size: 1rem; flex-wrap: wrap; }
+    header a { color: var(--wall); text-decoration: none; }
+    header b { color: var(--wall); font-variant-numeric: tabular-nums; }
+    #wrap { flex: 1; width: 100%; min-height: 0; display: grid; place-items: center; padding: 0 12px 12px; }
+    canvas { touch-action: none; display: block; }
+    #msg { position: fixed; inset: 0; display: none; place-items: center; background: rgba(20, 17, 15, 0.8); text-align: center; }
+    #msg.show { display: grid; }
+    #msg div { padding: 1.5rem 2rem; border: 2px solid var(--goal); border-radius: 1rem; background: var(--bg); }
+    #msg h2 { margin: 0 0 0.5rem; color: var(--goal); }
+    #msg button { margin-top: 1rem; font: inherit; padding: 0.5rem 1.2rem; border-radius: 0.5rem; border: 0; background: var(--wall); color: #14110f; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <header>
+    <a href="../../">&larr; Games</a>
+    <span>Level <b id="level">1</b></span>
+    <span>Moves <b id="moves">0</b></span>
+    <span>Time <b id="time">0.0</b>s</span>
+    <span>Arrows / WASD, or swipe</span>
+  </header>
+  <div id="wrap"><canvas id="c"></canvas></div>
+  <div id="msg"><div><h2>Level complete!</h2><p id="stats"></p><button id="next" autofocus>Next level</button></div></div>
+<script>
+(() => {
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+  const wrap = document.getElementById('wrap');
+  const el = id => document.getElementById(id);
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+  const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
+  const MOVE_MS = 110;
+
+  let level = 1, n, walls, ball, goal, moves, startTime, elapsed, anim, held, size, cell, done;
+
+  // Recursive-backtracker maze. walls[y][x] = {up, down, left, right}: true means a wall blocks that side.
+  function makeMaze(n) {
+    const g = Array.from({ length: n }, () => Array.from({ length: n }, () => ({ up: true, down: true, left: true, right: true })));
+    const seen = Array.from({ length: n }, () => Array(n).fill(false));
+    const opposite = { up: 'down', down: 'up', left: 'right', right: 'left' };
+    const stack = [[0, 0]];
+    seen[0][0] = true;
+    while (stack.length) {
+      const [x, y] = stack[stack.length - 1];
+      const options = Object.entries(DIRS)
+        .map(([d, [dx, dy]]) => [d, x + dx, y + dy])
+        .filter(([, nx, ny]) => nx >= 0 && ny >= 0 && nx < n && ny < n && !seen[ny][nx]);
+      if (!options.length) { stack.pop(); continue; }
+      const [d, nx, ny] = options[Math.floor(Math.random() * options.length)];
+      g[y][x][d] = false;
+      g[ny][nx][opposite[d]] = false;
+      seen[ny][nx] = true;
+      stack.push([nx, ny]);
+    }
+    return g;
+  }
+
+  function start() {
+    n = Math.min(6 + level * 2, 26);
+    walls = makeMaze(n);
+    ball = { x: 0, y: 0, px: 0, py: 0 };   // x,y = cell; px,py = drawn position in cells (animated)
+    goal = { x: n - 1, y: n - 1 };
+    moves = 0; elapsed = 0; startTime = null; anim = null; held = null; done = false;
+    el('level').textContent = level;
+    el('moves').textContent = 0;
+    el('time').textContent = '0.0';
+    el('msg').classList.remove('show');
+    resize();
+  }
+
+  function resize() {
+    const r = wrap.getBoundingClientRect();
+    size = Math.max(120, Math.floor(Math.min(r.width - 24, r.height - 12)));
+    const dpr = window.devicePixelRatio || 1;
+    canvas.style.width = canvas.style.height = size + 'px';
+    canvas.width = canvas.height = Math.floor(size * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cell = size / n;
+    draw();
+  }
+
+  function tryMove(dir) {
+    if (done || anim) return;
+    const [dx, dy] = DIRS[dir];
+    if (walls[ball.y][ball.x][dir]) return;
+    if (startTime === null) startTime = performance.now();
+    anim = { fromX: ball.x, fromY: ball.y, toX: ball.x + dx, toY: ball.y + dy, t0: performance.now() };
+    moves++;
+    el('moves').textContent = moves;
+  }
+
+  function frame(now) {
+    if (anim) {
+      const t = Math.min(1, (now - anim.t0) / MOVE_MS);
+      ball.px = anim.fromX + (anim.toX - anim.fromX) * t;
+      ball.py = anim.fromY + (anim.toY - anim.fromY) * t;
+      if (t === 1) {
+        ball.x = anim.toX; ball.y = anim.toY; ball.px = ball.x; ball.py = ball.y;
+        anim = null;
+        if (ball.x === goal.x && ball.y === goal.y) finish();
+        else if (held) tryMove(held);
+      }
+    } else if (held) {
+      tryMove(held);
+    }
+    if (startTime !== null && !done) {
+      elapsed = (now - startTime) / 1000;
+      el('time').textContent = elapsed.toFixed(1);
+    }
+    draw();
+    requestAnimationFrame(frame);
+  }
+
+  function finish() {
+    done = true; held = null;
+    el('stats').textContent = `${moves} moves in ${elapsed.toFixed(1)}s`;
+    el('msg').classList.add('show');
+    el('next').focus();
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, size, size);
+    ctx.fillStyle = css('--goal');
+    ctx.globalAlpha = 0.35;
+    ctx.fillRect(goal.x * cell, goal.y * cell, cell, cell);
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = css('--wall');
+    ctx.lineWidth = Math.max(2, cell * 0.08);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    for (let y = 0; y < n; y++) {
+      for (let x = 0; x < n; x++) {
+        const w = walls[y][x], x0 = x * cell, y0 = y * cell;
+        if (w.up) { ctx.moveTo(x0, y0); ctx.lineTo(x0 + cell, y0); }
+        if (w.left) { ctx.moveTo(x0, y0); ctx.lineTo(x0, y0 + cell); }
+        if (y === n - 1 && w.down) { ctx.moveTo(x0, y0 + cell); ctx.lineTo(x0 + cell, y0 + cell); }
+        if (x === n - 1 && w.right) { ctx.moveTo(x0 + cell, y0); ctx.lineTo(x0 + cell, y0 + cell); }
+      }
+    }
+    ctx.stroke();
+    ctx.fillStyle = css('--ball');
+    ctx.beginPath();
+    ctx.arc((ball.px + 0.5) * cell, (ball.py + 0.5) * cell, cell * 0.28, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Keyboard: hold a key to keep rolling.
+  const KEYS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', w: 'up', s: 'down', a: 'left', d: 'right', W: 'up', S: 'down', A: 'left', D: 'right' };
+  addEventListener('keydown', e => {
+    const d = KEYS[e.key];
+    if (!d) return;
+    e.preventDefault();
+    held = d;
+    tryMove(d);
+  });
+  addEventListener('keyup', e => { if (KEYS[e.key] === held) held = null; });
+
+  // Touch / mouse drag: each time the finger travels one threshold in a direction, roll that way.
+  let origin = null;
+  canvas.addEventListener('pointerdown', e => { origin = [e.clientX, e.clientY]; canvas.setPointerCapture(e.pointerId); });
+  canvas.addEventListener('pointermove', e => {
+    if (!origin) return;
+    const dx = e.clientX - origin[0], dy = e.clientY - origin[1];
+    const threshold = Math.max(14, cell * 0.5);
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < threshold) return;
+    held = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
+    tryMove(held);
+    origin = [e.clientX, e.clientY];
+  });
+  const release = () => { origin = null; held = null; };
+  canvas.addEventListener('pointerup', release);
+  canvas.addEventListener('pointercancel', release);
+
+  el('next').addEventListener('click', () => { level++; start(); });
+  addEventListener('resize', resize);
+
+  start();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
