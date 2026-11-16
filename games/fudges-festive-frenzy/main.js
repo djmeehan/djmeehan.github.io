@@ -234,6 +234,10 @@
     ctx.translate(sx, sy);
     const air = f.h > 4;
     const r = cheekRadius(f.load);
+    if (f.lunge > 0) {   // speed streaks behind him
+      for (let i = 1; i <= 4; i++) { ctx.globalAlpha = 0.22 - i * 0.04; ellipse(-f.dir * i * 22, -26 - (air ? 0 : 0), 30 - i * 4, 18 - i * 2, '#fff'); }
+      ctx.globalAlpha = flicker ? 0.55 : 1;
+    }
     if (air && pics.leap) {
       // the stretched-out photo, nose first, for jumps
       const sc = 0.4, w = pics.leap.width, h = pics.leap.height;
@@ -259,7 +263,8 @@
       const run = f.moving && !stunned;
       const phase = t * (9 + (run ? 0 : -6));
       const bob = run ? Math.abs(Math.sin(phase)) * 4 : Math.sin(t * 2.5) * 1;
-      ctx.scale(1 + 0.12 * sq, 1 - 0.14 * sq);
+      ctx.scale(1 + 0.12 * sq + (f.lunge > 0 ? 0.2 : 0), 1 - 0.14 * sq - (f.lunge > 0 ? 0.1 : 0));
+      if (f.lunge > 0) ctx.rotate(0.12);
       ellipse(-36, -18 - bob, 7, 6, '#ecd2ac');                              // tail
       ellipse(-4, -26 - bob, 35, 23, '#ecd2ac');                              // body
       ellipse(4, -21 - bob, 25, 14, '#f7ead6');                               // belly
@@ -403,7 +408,7 @@
   }
 
   // ---------- state and effects ----------
-  let g, mode = 'title', cam = 0, camShake = 0, landSquash = 0, t = 0, overAt = 0, roundBanner = 0, best = +store.get(BEST_KEY) || 0, hintFade = 1;
+  let grabPending = false, lastDown = 0, lastDownX = 0, grabHint = 0, g, mode = 'title', cam = 0, camShake = 0, landSquash = 0, t = 0, overAt = 0, roundBanner = 0, best = +store.get(BEST_KEY) || 0, hintFade = 1;
   const parts = [];
   const botMode = location.hash.indexOf('#bot') === 0;
 
@@ -467,8 +472,10 @@
         case 'jump': tone(300, 0.14, 'square', 0.06, 560); break;
         case 'tackle': thud(); tone(200, 0.3, 'sawtooth', 0.12, 60); break;
         case 'grab': tone(700, 0.18, 'sawtooth', 0.07, 300); break;
+        case 'snatch': tone(260, 0.25, 'sawtooth', 0.12, 700); tone(900, 0.12, 'square', 0.06, 400, 0.1); break;
+        case 'lunge': tone(240, 0.22, 'sawtooth', 0.07, 900); break;
         case 'steal': tone(400, 0.4, 'sawtooth', 0.1, 90); break;
-        case 'recover': tone(500, 0.1, 'triangle', 0.15, 1000); break;
+        case 'recover': [660, 880, 1100].forEach((f, i) => tone(f, 0.14, 'triangle', 0.17, null, i * 0.06)); break;
         case 'drop': tone(1400, 0.08, 'sine', 0.05, 1800); tone(1900, 0.08, 'sine', 0.04, 2300, 0.08); break;
         case 'deliver': [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, 0.28, 'triangle', 0.16, null, i * 0.07)); break;
         case 'sleighLanded': tone(330, 0.5, 'sine', 0.12, 220); break;
@@ -492,7 +499,10 @@
     if (mode === 'title') return startPlay();
     if (mode === 'paused') return setPaused(false);
     if (mode === 'over') { if (t - overAt > 1) startPlay(); return; }
-    pointers.set(e.pointerId, toLogical(e));
+    const now = performance.now(), pt = toLogical(e);
+    if (now - lastDown < 330 && Math.abs(pt.x - lastDownX) < 90 && pt.y >= JUMP_LINE) { grabPending = true; lastDown = 0; }   // double tap = lunge
+    else { lastDown = now; lastDownX = pt.x; }
+    pointers.set(e.pointerId, pt);
   });
   canvas.addEventListener('pointermove', e => { if (pointers.has(e.pointerId)) pointers.set(e.pointerId, toLogical(e)); });
   for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) canvas.addEventListener(ev, e => pointers.delete(e.pointerId));
@@ -502,6 +512,7 @@
   addEventListener('keydown', e => {
     if (e.key === 'p' || e.key === 'P' || e.key === 'Escape') { if (mode === 'play' || mode === 'paused') setPaused(mode === 'play'); return; }
     if (e.key === 'm' || e.key === 'M') { toggleMute(); return; }
+    if (['e', 'E', 'x', 'X', 'Shift'].includes(e.key)) { if (mode === 'play') grabPending = true; return; }
     if (![...LEFT, ...RIGHT, ...UP, 'Enter'].includes(e.key)) return;
     e.preventDefault();
     audio.unlock();
@@ -517,6 +528,7 @@
   function readInput() {
     if (botMode || mode === 'title') return L.botInput(g);
     let dir = 0, jump = false;
+    const grab = grabPending; grabPending = false;
     if (LEFT.some(k => keys.has(k))) dir -= 1;
     if (RIGHT.some(k => keys.has(k))) dir += 1;
     if (UP.some(k => keys.has(k))) jump = true;
@@ -528,7 +540,7 @@
         if (Math.abs(dx) > 16) dir = dx > 0 ? 1 : -1;
       }
     } else for (const p of pointers.values()) if (p.y < JUMP_LINE) jump = true;
-    return { dir, jump };
+    return { dir, jump, grab };
   }
 
   function setPaused(p) {
@@ -579,6 +591,21 @@
       ctx.globalAlpha = 1;
       if (lost) text('\u2715', x, 34, 20, '#ff6b6b');
     }
+    for (const e of g.elves) {   // a red arrow at the screen edge for elves sneaking up out of sight
+      const sx = e.x - cam, d = Math.abs(e.x - f.x);
+      if ((sx >= -10 && sx <= W + 10) || d > 1100) continue;
+      const right = sx > W / 2, ax = right ? W - 34 : 34, ay = 250;
+      ctx.fillStyle = 'rgba(8,16,48,0.75)';
+      ctx.beginPath(); ctx.roundRect(ax - 24, ay - 24, 48, 48, 12); ctx.fill();
+      ctx.fillStyle = 'rgba(255,90,90,' + (0.7 + 0.3 * Math.sin(t * 10)) + ')';
+      ctx.beginPath(); ctx.moveTo(ax + (right ? 16 : -16), ay); ctx.lineTo(ax - (right ? 4 : -4), ay - 14); ctx.lineTo(ax - (right ? 4 : -4), ay + 14); ctx.closePath(); ctx.fill();
+      text('elf!', ax, ay + 36, 13, '#ff8a8a');
+    }
+    if (grabHint > 0) {
+      ctx.globalAlpha = Math.min(1, grabHint);
+      shadowText('An elf snatched a present! Double-tap (or press E) to lunge and steal it back!', W / 2, 128, 18, '#ffd166');
+      ctx.globalAlpha = 1;
+    }
     const z = g.sleigh;
     if ((z.phase === 'landed' || z.phase === 'landing') && f.load > 0) {
       const sx = z.x - cam;
@@ -612,9 +639,10 @@
     shadowText("Fudge the hamster must stuff Santa's presents in his cheeks", W / 2, 266, 19, '#fff');
     shadowText('before the naughty elves steal them, then deliver them to the sleigh!', W / 2, 292, 19, '#fff');
     shadowText('Hold the mouse or your finger to run toward it. Press high up to jump.', W / 2, 336, 16, '#cfe0ff');
-    shadowText('Keyboard: arrows or A / D to run, Space to jump, P to pause.', W / 2, 360, 16, '#cfe0ff');
-    if (Math.floor(t * 1.6) % 2 === 0) shadowText('Tap, click or press a key to play', W / 2, 410, 26, '#fff');
-    if (best > 0) shadowText('Best score: ' + best, W / 2, 446, 18, '#ffd166');
+    shadowText('Elves snatch presents from your cheeks: double-tap (or press E) to lunge and steal one back!', W / 2, 360, 16, '#ffd166');
+    shadowText('Keyboard: arrows or A / D to run, Space to jump, P to pause.', W / 2, 384, 16, '#cfe0ff');
+    if (Math.floor(t * 1.6) % 2 === 0) shadowText('Tap, click or press a key to play', W / 2, 426, 26, '#fff');
+    if (best > 0) shadowText('Best score: ' + best, W / 2, 460, 18, '#ffd166');
   }
 
   function drawBetween() {
@@ -701,6 +729,7 @@
       const steps = Math.ceil(dt * 60);
       for (let i = 0; i < steps; i++) L.step(g, input, dt / steps);
       roundBanner = Math.max(0, roundBanner - dt);
+      grabHint = Math.max(0, grabHint - dt);
       hintFade = Math.max(0, hintFade - (g.round === 1 && g.time > 8 ? dt * 0.5 : 0));
       if (mode === 'play' && g.phase === 'over') { mode = 'over'; overAt = t; best = Math.max(best, g.best); store.set(BEST_KEY, String(best)); }
       if (g.phase === 'between' && g.timer > 2.9) roundBanner = 0;
@@ -713,6 +742,9 @@
       else if (ev.type === 'deliver') burst(g.sleigh.x, 70, 28, ['#ff6b6b', '#ffd166', '#6bdc8f', '#6bb7ff'], 260, 160);
       else if (ev.type === 'tackle') { camShake = 0.5; burst(f.x, 30 + f.h, 14, ['#fff', '#cfe0ff'], 200, 120); }
       else if (ev.type === 'land') landSquash = 1;
+      else if (ev.type === 'snatch') { grabHint = 5; camShake = 0.4; burst(f.x, 50, 10, ['#ffd166', '#ff6b6b'], 180, 100); }
+      else if (ev.type === 'recover') { grabHint = 0; burst(f.x, 50, 16, ['#6bdc8f', '#ffd166', '#fff'], 220, 120); }
+      else if (ev.type === 'lunge') burst(f.x - f.dir * 20, 20, 6, ['#fff', '#cfe0ff'], 100, 20);
       else if (ev.type === 'steal') camShake = 0.2;
     }
     g.events.length = 0;
@@ -731,6 +763,7 @@
     requestAnimationFrame(frame);
   }
 
+  if (location.hash.indexOf('debug') > 0) window.__fudge = { get g() { return g; }, get mode() { return mode; }, get cam() { return cam; } };   // for browser tests
   resize();
   requestAnimationFrame(frame);
 })();

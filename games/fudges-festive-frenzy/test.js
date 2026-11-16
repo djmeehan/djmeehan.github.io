@@ -68,43 +68,92 @@ function run(s, seconds, input, dt) {
   s.fudge.x = 100;
   const p = L.addPresent(s, 1500, 0, 'ground');
   const e = L.addElf(s, 1450);
-  run(s, 30);
+  run(s, 14.5);   // long enough to leave the field, but before the replacement elf (queued 3s later) arrives
   check(p.state === 'stolen', 'the elf got away with the present');
   check(s.roundStolen === 1, 'the theft is counted');
   check(s.elves.length === 0 && s.elfQueue.length === 1, 'the elf has left and will come back later');
 }
 
-// Fudge can win a present back from a fleeing elf by touching it.
-{
-  const s = scene();
-  s.fudge.x = 1500;
-  const p = L.addPresent(s, 1500 - 120, 0, 'ground');
-  p.state = 'carriedByElf';
-  const e = L.addElf(s, 1500 - 20);
-  e.state = 'flee'; e.exit = -1; e.present = p; p.carrier = e.id;
-  L.step(s, none, 1 / 60);
-  check(p.state === 'ground' && e.state === 'hunt', 'touching a fleeing elf makes it drop the present');
-}
-
-// A tackle spills part of the load and stuns Fudge; jumping over the elf avoids it.
+// An elf that reaches Fudge snatches one present from his cheeks and runs; with an empty mouth it only shoves him.
 {
   const s = scene();
   s.fudge.x = 1000;
-  for (let i = 0; i < 6; i++) { const p = L.addPresent(s, 1000, 0, 'carried'); s.fudge.load++; }
+  for (let i = 0; i < 6; i++) { L.addPresent(s, 1000, 0, 'carried'); s.fudge.load++; }
   const e = L.addElf(s, 1010);
   L.step(s, none, 1 / 60);
-  check(s.fudge.load === 3, 'a tackle spills half the load (6 -> 3), got ' + s.fudge.load);
-  check(s.fudge.stun > 0, 'Fudge is stunned');
-  check(s.presents.filter(p => p.state === 'falling').length === 3, 'spilled presents fall back down');
+  check(s.fudge.load === 5, 'an elf snatches exactly one present (6 -> 5), got ' + s.fudge.load);
+  check(e.state === 'flee' && e.present && e.present.state === 'carriedByElf', 'the elf runs off with it');
+  check(s.fudge.stun > 0 && s.fudge.invuln > s.fudge.stun, 'Fudge is stunned briefly and then protected for a moment');
   const before = s.fudge.load;
+  L.addElf(s, 1005);
   L.step(s, none, 1 / 60);
-  check(s.fudge.load === before, 'no second tackle while protected');
+  check(s.fudge.load === before, 'no second snatch while protected');
   const j = scene();
   j.fudge.x = 1000; j.fudge.h = 90; j.fudge.vh = 0;
   j.fudge.load = 2;
+  L.addPresent(j, 1000, 0, 'carried'); L.addPresent(j, 1000, 0, 'carried');
   L.addElf(j, 1005);
   L.step(j, none, 1 / 60);
-  check(j.fudge.stun === 0, 'an elf cannot tackle Fudge while he is in the air');
+  check(j.fudge.stun === 0 && j.fudge.load === 2, 'an elf cannot reach Fudge while he is in the air');
+  const m = scene();
+  m.fudge.x = 1000;
+  L.addElf(m, 1010);
+  L.step(m, none, 1 / 60);
+  check(m.fudge.stun > 0 && m.fudge.load === 0 && m.presents.length === 0, 'with nothing in his cheeks an elf just shoves him');
+}
+
+// Stealing back: only a lunge (double tap) at a fleeing elf returns the present, straight into his cheeks.
+{
+  const make = () => {
+    const s = scene();
+    s.fudge.x = 1000; s.fudge.dir = 1;
+    const p = L.addPresent(s, 1100, 46, 'carriedByElf');
+    const e = L.addElf(s, 1100);
+    e.state = 'flee'; e.exit = 1; e.present = p; p.carrier = e.id;
+    return { s, p, e };
+  };
+  let { s, p, e } = make();
+  run(s, 0.1);
+  check(p.state === 'carriedByElf', 'just running at a fleeing elf does not get the present back');
+  ({ s, p, e } = make());
+  L.step(s, { dir: 0, jump: false, grab: true }, 1 / 60);
+  run(s, 0.3);
+  check(p.state === 'carried' && s.fudge.load === 1, 'a lunge grabs the present back into his cheeks');
+  check(e.state === 'hunt' && e.present === null && e.pause > 0, 'the robbed elf is left stunned and empty-handed');
+  ({ s, p, e } = make());
+  s.fudge.x = 400;
+  L.step(s, { dir: 0, jump: false, grab: true }, 1 / 60);
+  run(s, 0.4);
+  check(p.state !== 'carried', 'a lunge that falls short gets nothing');
+  const q = scene();
+  q.fudge.x = 1000;
+  L.step(q, { dir: 0, jump: false, grab: true }, 1 / 60);
+  const x1 = q.fudge.x;
+  L.step(q, { dir: 0, jump: false, grab: true }, 1 / 60);
+  check(q.fudge.x > x1 && q.fudge.lunge > 0, 'the lunge dashes forward');
+  run(q, 0.5);
+  check(q.fudge.lunge === 0, 'the lunge ends');
+  const before = q.fudge.x;
+  L.step(q, { dir: 0, jump: false, grab: true }, 1 / 60);
+  check(q.fudge.x === before, 'a second lunge straight away is on cooldown');
+  run(q, 1);
+  L.step(q, { dir: 0, jump: false, grab: true }, 1 / 60);
+  check(q.fudge.lunge > 0, 'the lunge is ready again after the cooldown');
+}
+
+// Elves arrive from both sides, including from behind Fudge.
+{
+  let behind = 0, far = 0;
+  for (let seed = 1; seed <= 60; seed++) {
+    const s = L.createGame(seed);
+    s.fudge.x = 1600; s.fudge.dir = 1;       // facing right: behind is the left
+    s.elfQueue = [0];
+    L.step(s, none, 1 / 60);
+    const e = s.elves[0];
+    if (Math.abs(e.x - 980) < 1) behind++; else far++;   // 980 = 620 behind Fudge (at 1600, facing right); otherwise the end of the field
+    check(Math.abs(e.x - s.fudge.x) > 450, 'elves start off-screen, seed ' + seed);
+  }
+  check(behind > 10 && far > 10, 'elves come from behind and from ahead (behind ' + behind + ', ahead ' + far + ')');
 }
 
 // Delivery only works at the landed sleigh and scores the whole load.

@@ -13,7 +13,7 @@ Derek's browser games and apps, published with GitHub Pages at https://djmeehan.
 ## Games
 
 - `games/demo/`: Ball Maze.
-- `games/fudges-festive-frenzy/`: a Christmas side-scroller starring Fudge the hamster (photo cutouts in `assets/`, rules in `logic.js` with tests in `test.js`, drawing and input in `main.js`). Controls: hold the mouse or a finger to run toward it, press high up to jump; arrows/WASD and Space also work. `index.html#bot=12` autoplays 12 seconds ahead (used for screenshots).
+- `games/fudges-festive-frenzy/`: a Christmas side-scroller starring Fudge the hamster (photo cutouts in `assets/`, rules in `logic.js` with tests in `test.js`, drawing and input in `main.js`). Controls: hold the mouse or a finger to run toward it, press high up to jump, double-tap (or press E) to lunge and steal a present back from an elf; arrows/WASD and Space also work. `index.html#bot=12` autoplays 12 seconds ahead (used for screenshots).
 
 ## Adding a game
 

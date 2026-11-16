@@ -23,6 +23,10 @@
     PRESENT_GRAVITY: 520,
     MAX_ELVES: 8,
     START_X: 160,
+    LUNGE_T: 0.35,         // the double-tap lunge: a short dash that can grab a present back from a fleeing elf
+    LUNGE_SPEED: 560,
+    LUNGE_CD: 0.9,
+    RECOVER_R: 64,
   };
 
   function mulberry32(seed) {
@@ -83,7 +87,7 @@
     s.elves = [];
     s.elfQueue = [];
     for (let i = 0; i < cfg.elves; i++) s.elfQueue.push(1.5 + i * 2.2);
-    s.fudge = { x: C.START_X, h: 0, vh: 0, dir: 1, load: 0, stun: 0, invuln: 0, moving: false };
+    s.fudge = { x: C.START_X, h: 0, vh: 0, dir: 1, load: 0, stun: 0, invuln: 0, moving: false, lunge: 0, lungeCd: 0 };
     s.sleigh = { x: -140, h: C.SLEIGH_H, phase: 'fly', xs, dropped: 0, landX: C.DROP_END + 400 + s.rng() * 500 };
   }
 
@@ -107,11 +111,23 @@
     const f = s.fudge;
     f.stun = Math.max(0, f.stun - dt);
     f.invuln = Math.max(0, f.invuln - dt);
+    f.lungeCd = Math.max(0, f.lungeCd - dt);
+    if (input.grab && f.lungeCd <= 0 && f.lunge <= 0 && f.stun <= 0) {
+      f.lunge = C.LUNGE_T;
+      f.lungeCd = C.LUNGE_CD;
+      emit(s, 'lunge');
+    }
     const dir = f.stun > 0 ? 0 : clamp(input.dir || 0, -1, 1);
-    f.moving = dir !== 0;
-    if (dir) {
-      f.dir = dir > 0 ? 1 : -1;
-      f.x = clamp(f.x + dir * fudgeSpeed(f.load) * dt, 20, C.W - 20);
+    if (f.lunge > 0) {
+      f.lunge = Math.max(0, f.lunge - dt);
+      f.moving = true;
+      f.x = clamp(f.x + f.dir * C.LUNGE_SPEED * dt, 20, C.W - 20);
+    } else {
+      f.moving = dir !== 0;
+      if (dir) {
+        f.dir = dir > 0 ? 1 : -1;
+        f.x = clamp(f.x + dir * fudgeSpeed(f.load) * dt, 20, C.W - 20);
+      }
     }
     if (input.jump && f.h === 0 && f.vh === 0 && f.stun <= 0) {
       f.vh = C.JUMP_V * (1 - Math.min(0.3, 0.02 * f.load));
@@ -178,34 +194,38 @@
     }
   }
 
+  // An elf reaches Fudge. With presents in his cheeks it snatches one and runs; with none it just shoves him. Either way he is stunned
+  // briefly and safe for a moment. To get a snatched present back he has to lunge at the elf (double tap) before it leaves the field.
   function tackle(s, elf) {
     const f = s.fudge;
-    const spill = f.load > 0 ? Math.max(1, Math.ceil(f.load * 0.5)) : 0;
-    let left = spill;
-    for (const p of s.presents) {
-      if (left > 0 && p.state === 'carried') {
-        p.state = 'falling';
-        p.h = f.h + 30;
-        p.vh = 320 + s.rng() * 120;
-        p.vx = (s.rng() - 0.5) * 360;
-        p.lock = 0.7;
-        left--;
-      }
+    const p = s.presents.find(q => q.state === 'carried');
+    f.stun = p ? 0.5 : 0.6;
+    f.invuln = 1.6;
+    f.lunge = 0;
+    if (p) {
+      f.load--;
+      p.state = 'carriedByElf';
+      p.carrier = elf.id;
+      elf.present = p;
+      elf.state = 'flee';
+      elf.exit = elf.x >= f.x ? 1 : -1;
+      emit(s, 'snatch');
+    } else {
+      elf.pause = 0.9;
+      elf.x += (elf.x >= f.x ? 1 : -1) * 40;
     }
-    f.load -= spill;
-    f.stun = 1.0;
-    f.invuln = 2.0;
-    elf.pause = 0.9;
-    elf.x += (elf.x >= f.x ? 1 : -1) * 40;
-    emit(s, 'tackle', { spilled: spill });
+    emit(s, 'tackle', { spilled: p ? 1 : 0 });
   }
 
   function stepElves(s, dt) {
     const f = s.fudge;
     while (s.elfQueue.length && s.time >= s.elfQueue[0]) {
       s.elfQueue.shift();
-      const fromRight = f.x < C.W / 2;
-      addElf(s, fromRight ? C.W + 30 : -30);
+      // Half the elves sneak up from behind Fudge (the side he is facing away from); the rest come from the far end of the field.
+      const behindX = clamp(f.x - f.dir * 620, -30, C.W + 30);
+      const farX = f.x < C.W / 2 ? C.W + 30 : -30;
+      const behind = s.rng() < 0.5 && Math.abs(behindX - f.x) > 450;
+      addElf(s, behind ? behindX : farX);
     }
     for (const e of s.elves.slice()) {
       if (e.pause > 0) { e.pause -= dt; continue; }
@@ -224,14 +244,14 @@
           if (s.roundStolen > s.cfg.allowance) gameOver(s);
           continue;
         }
-        if (f.stun <= 0 && f.h < 50 && Math.abs(e.x - f.x) < C.FUDGE_R + C.ELF_R) {
-          e.present.state = 'ground';
-          e.present.h = 0;
-          e.present.lock = 0.5;
+        if (f.lunge > 0 && f.h < 70 && Math.abs(e.x - f.x) < C.RECOVER_R) {
+          e.present.state = 'carried';
+          e.present.carrier = 0;
+          f.load++;
           e.present = null;
           e.state = 'hunt';
-          e.pause = 1.5;
-          emit(s, 'recover');
+          e.pause = 1.6;
+          emit(s, 'recover', { load: f.load });
         }
         continue;
       }
@@ -328,7 +348,15 @@
     const dx = goal - f.x;
     let jump = false;
     for (const e of s.elves) if (e.state === 'hunt' && Math.abs(e.x - f.x) < 90 && (e.x - f.x) * dx >= 0) jump = true;
-    return { dir: Math.abs(dx) < 8 ? 0 : Math.sign(dx), jump };
+    let grab = false;
+    for (const e of s.elves) {
+      if (e.state !== 'flee') continue;
+      const d = e.x - f.x;
+      if (Math.abs(d) < 220 && d * f.dir > 0) grab = true;
+      if (Math.abs(d) < 450) goal = e.x;
+    }
+    if (goal !== null) { const d2 = goal - f.x; return { dir: Math.abs(d2) < 8 ? 0 : Math.sign(d2), jump, grab }; }
+    return { dir: Math.abs(dx) < 8 ? 0 : Math.sign(dx), jump, grab };
   }
 
   const api = { C, roundConfig, fudgeSpeed, deliveryPoints, createGame, startRound, step, botInput, addPresent, addElf, mulberry32 };
