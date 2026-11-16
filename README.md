@@ -16,4 +16,6 @@ Derek's browser games and apps, published with GitHub Pages at https://djmeehan.
 2. Add a link to it in the root `index.html`.
 3. Commit and push to `main`; Pages redeploys within a minute or two.
 
+Before a game can go live it needs a `test.js`, passing checks (`python3 tools/check.py`: tests, secrets, no external hosts, no `eval`) and Derek's sign-off (`python3 tools/signoff.py <name>`, run in a terminal after playing it locally). `tools/gate.py` enforces this on every push.
+
 Run locally with `python3 -m http.server` in this folder.
