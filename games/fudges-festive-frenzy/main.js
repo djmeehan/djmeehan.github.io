@@ -473,6 +473,7 @@
         case 'tackle': thud(); tone(200, 0.3, 'sawtooth', 0.12, 60); break;
         case 'grab': tone(700, 0.18, 'sawtooth', 0.07, 300); break;
         case 'snatch': tone(260, 0.25, 'sawtooth', 0.12, 700); tone(900, 0.12, 'square', 0.06, 400, 0.1); break;
+        case 'tick': tone(1000, 0.07, 'square', 0.07); break;
         case 'lunge': tone(240, 0.22, 'sawtooth', 0.07, 900); break;
         case 'steal': tone(400, 0.4, 'sawtooth', 0.1, 90); break;
         case 'recover': [660, 880, 1100].forEach((f, i) => tone(f, 0.14, 'triangle', 0.17, null, i * 0.06)); break;
@@ -591,6 +592,17 @@
       ctx.globalAlpha = 1;
       if (lost) text('\u2715', x, 34, 20, '#ff6b6b');
     }
+    // the clock and the quota: how many presents must reach Santa before time runs out
+    const left = Math.max(0, g.timeLeft), urgent = left <= 10 && g.phase === 'play';
+    const mm = Math.floor(Math.ceil(left) / 60), ss = Math.ceil(left) % 60;
+    const clock = mm + ':' + String(ss).padStart(2, '0');
+    const met = g.roundDelivered >= g.cfg.quota;
+    const qw = 270, qx = W / 2 - qw / 2, qy = 76;
+    ctx.fillStyle = urgent && Math.floor(t * 4) % 2 === 0 ? 'rgba(120,20,30,0.75)' : 'rgba(8,16,48,0.6)';
+    ctx.beginPath(); ctx.roundRect(qx, qy, qw, 30, 15); ctx.fill();
+    text('\u23f1 ' + clock, qx + 62, qy + 16, urgent ? 20 : 17, urgent ? '#ff8a8a' : '#fff');
+    ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fillRect(qx + 118, qy + 8, 1.5, 14);
+    text(met ? 'Quota met! \u2713' : 'Deliver ' + g.roundDelivered + ' / ' + g.cfg.quota, qx + 195, qy + 16, 15, met ? '#6bdc8f' : '#ffd166');
     for (const e of g.elves) {   // a red arrow at the screen edge for elves sneaking up out of sight
       const sx = e.x - cam, d = Math.abs(e.x - f.x);
       if ((sx >= -10 && sx <= W + 10) || d > 1100) continue;
@@ -628,6 +640,7 @@
       ctx.globalAlpha = Math.min(1, roundBanner);
       shadowText('Round ' + g.round, W / 2, 232, 52, '#ffd166');
       shadowText(g.cfg.elves + (g.cfg.elves === 1 ? ' naughty elf' : ' naughty elves') + ' · ' + g.cfg.presents + ' presents', W / 2, 277, 20, '#fff');
+      shadowText('Deliver ' + g.cfg.quota + ' to Santa in ' + g.cfg.timeLimit + ' seconds', W / 2, 308, 22, '#6bdc8f');
       ctx.globalAlpha = 1;
     }
   }
@@ -638,19 +651,20 @@
     shadowText("Fudge's Festive Frenzy", W / 2, 218, 54, '#ffd166');
     shadowText("Fudge the hamster must stuff Santa's presents in his cheeks", W / 2, 266, 19, '#fff');
     shadowText('before the naughty elves steal them, then deliver them to the sleigh!', W / 2, 292, 19, '#fff');
-    shadowText('Hold the mouse or your finger to run toward it. Press high up to jump.', W / 2, 336, 16, '#cfe0ff');
-    shadowText('Elves snatch presents from your cheeks: double-tap (or press E) to lunge and steal one back!', W / 2, 360, 16, '#ffd166');
-    shadowText('Keyboard: arrows or A / D to run, Space to jump, P to pause.', W / 2, 384, 16, '#cfe0ff');
-    if (Math.floor(t * 1.6) % 2 === 0) shadowText('Tap, click or press a key to play', W / 2, 426, 26, '#fff');
-    if (best > 0) shadowText('Best score: ' + best, W / 2, 460, 18, '#ffd166');
+    shadowText('Beat the clock: deliver enough presents each round or it is game over.', W / 2, 316, 17, '#6bdc8f');
+    shadowText('Hold the mouse or your finger to run toward it. Press high up to jump.', W / 2, 346, 16, '#cfe0ff');
+    shadowText('Elves snatch presents from your cheeks: double-tap (or press E) to lunge and steal one back!', W / 2, 370, 16, '#ffd166');
+    shadowText('Keyboard: arrows or A / D to run, Space to jump, P to pause.', W / 2, 394, 16, '#cfe0ff');
+    if (Math.floor(t * 1.6) % 2 === 0) shadowText('Tap, click or press a key to play', W / 2, 432, 26, '#fff');
+    if (best > 0) shadowText('Best score: ' + best, W / 2, 466, 18, '#ffd166');
   }
 
   function drawBetween() {
     const s = g.summary;
     panel(W / 2 - 220, 150, 440, 200);
     shadowText('Round ' + s.round + ' complete!', W / 2, 188, 34, '#ffd166');
-    shadowText('Delivered ' + s.delivered + '   ·   Stolen ' + s.stolen, W / 2, 232, 20, '#fff');
-    shadowText('Round bonus +' + s.bonus, W / 2, 262, 20, '#6bdc8f');
+    shadowText('Delivered ' + s.delivered + ' (needed ' + s.quota + ')   \u00b7   Stolen ' + s.stolen, W / 2, 232, 20, '#fff');
+    shadowText((s.why === 'time' ? 'Time up, quota met \u00b7 ' : '') + 'Round bonus +' + s.bonus + (s.timeBonus ? ' (time bonus +' + s.timeBonus + ')' : ''), W / 2, 262, 18, '#6bdc8f');
     const nx = L.roundConfig(s.round + 1);
     shadowText('Next: ' + nx.elves + (nx.elves === 1 ? ' elf' : ' elves') + ', faster and sneakier', W / 2, 310, 16, '#cfe0ff');
   }
@@ -659,11 +673,11 @@
     ctx.fillStyle = 'rgba(6,12,40,0.6)'; ctx.fillRect(0, 0, W, H);
     panel(W / 2 - 250, 70, 500, 340);
     portrait(W / 2, 150, 48);
-    shadowText('Game over', W / 2, 232, 40, '#ffd166');
+    shadowText(g.overReason === 'time' ? "Time's up!" : 'Too many presents stolen!', W / 2, 232, 40, '#ffd166');
     shadowText('Score ' + g.score, W / 2, 272, 26, '#fff');
     const newBest = g.score > 0 && g.score >= g.best;
     shadowText(newBest ? 'New best!' : 'Best ' + g.best, W / 2, 304, 20, newBest ? '#6bdc8f' : '#cfe0ff');
-    shadowText('Fudge delivered ' + g.deliveredTotal + ' present' + (g.deliveredTotal === 1 ? '' : 's') + ' to Santa', W / 2, 334, 17, '#fff');
+    shadowText(g.overReason === 'time' ? 'Fudge delivered ' + g.roundDelivered + ' of the ' + g.cfg.quota + ' presents Santa needed' : 'Fudge delivered ' + g.deliveredTotal + ' present' + (g.deliveredTotal === 1 ? '' : 's') + ' to Santa', W / 2, 334, 17, '#fff');
     if (t - overAt > 1 && Math.floor(t * 1.6) % 2 === 0) shadowText('Tap, click or press a key to play again', W / 2, 378, 20, '#fff');
   }
 

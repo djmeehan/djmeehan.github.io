@@ -27,6 +27,10 @@
     LUNGE_SPEED: 560,
     LUNGE_CD: 0.9,
     RECOVER_R: 64,
+    START_TIME: 50,        // seconds on the clock in round 1; each round has TIME_STEP less, down to MIN_TIME
+    TIME_STEP: 2,
+    MIN_TIME: 32,
+    TIME_BONUS: 3,         // points per second left when a round is cleared early
   };
 
   function mulberry32(seed) {
@@ -42,13 +46,18 @@
 
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
-  // How hard round n is: more presents, more and faster elves, and a little more slack for stolen presents every third round.
+  // How hard round n is: more presents, more and faster elves, a little more slack for stolen presents every third round, and a shrinking
+  // clock. The quota is how many presents must be delivered before time runs out (the presents that may be lost are the allowance).
   function roundConfig(n) {
+    const presents = Math.min(5 + 2 * n, 22);
+    const allowance = 3 + Math.floor((n - 1) / 3);
     return {
-      presents: Math.min(5 + 2 * n, 22),
+      presents,
       elves: Math.min(1 + Math.floor(n / 2), C.MAX_ELVES),
       elfSpeed: Math.min(95 + 14 * n, 215),
-      allowance: 3 + Math.floor((n - 1) / 3),
+      allowance,
+      quota: Math.max(1, presents - allowance),
+      timeLimit: Math.max(C.MIN_TIME, C.START_TIME - C.TIME_STEP * (n - 1)),
     };
   }
 
@@ -64,7 +73,7 @@
 
   function createGame(seed, best) {
     const s = { rng: mulberry32(seed || 1), seed: seed || 1, best: best || 0, round: 0, score: 0, stolenTotal: 0, deliveredTotal: 0,
-                phase: 'play', time: 0, timer: 0, events: [], summary: null, nextId: 1 };
+                phase: 'play', time: 0, timer: 0, events: [], summary: null, overReason: null, nextId: 1 };
     startRound(s, 1);
     return s;
   }
@@ -83,6 +92,7 @@
     s.time = 0;
     s.roundStolen = 0;
     s.roundDelivered = 0;
+    s.timeLeft = cfg.timeLimit;
     s.presents = [];
     s.elves = [];
     s.elfQueue = [];
@@ -241,7 +251,7 @@
           s.elves.splice(s.elves.indexOf(e), 1);
           s.elfQueue.push(s.time + 3);
           emit(s, 'steal');
-          if (s.roundStolen > s.cfg.allowance) gameOver(s);
+          if (s.roundStolen > s.cfg.allowance) gameOver(s, 'stolen');
           continue;
         }
         if (f.lunge > 0 && f.h < 70 && Math.abs(e.x - f.x) < C.RECOVER_R) {
@@ -294,23 +304,44 @@
     emit(s, 'deliver', { count, points });
   }
 
-  function gameOver(s) {
+  function gameOver(s, reason) {
     s.phase = 'over';
+    s.overReason = reason || 'stolen';
     s.best = Math.max(s.best, s.score);
     emit(s, 'gameOver');
   }
 
+  function endRound(s, why) {
+    const left = Math.max(0, s.timeLeft);
+    const timeBonus = why === 'cleared' ? Math.floor(left) * C.TIME_BONUS : 0;
+    const bonus = 50 + Math.max(0, s.cfg.allowance - s.roundStolen) * 25 + timeBonus;
+    s.score += bonus;
+    s.best = Math.max(s.best, s.score);
+    s.summary = { round: s.round, delivered: s.roundDelivered, stolen: s.roundStolen, quota: s.cfg.quota, timeBonus, bonus, why };
+    s.phase = 'between';
+    s.timer = 3;
+    emit(s, 'roundEnd');
+  }
+
+  // Everything has been delivered or stolen: the round is over early (and, because the allowance was not exceeded, the quota was met).
   function checkRoundEnd(s) {
     if (s.phase !== 'play' || s.sleigh.phase !== 'landed') return;
     const open = s.presents.some(p => p.state === 'falling' || p.state === 'ground' || p.state === 'carried' || p.state === 'carriedByElf');
     if (open) return;
-    const bonus = 50 + Math.max(0, s.cfg.allowance - s.roundStolen) * 25;
-    s.score += bonus;
-    s.best = Math.max(s.best, s.score);
-    s.summary = { round: s.round, delivered: s.roundDelivered, stolen: s.roundStolen, bonus };
-    s.phase = 'between';
-    s.timer = 3;
-    emit(s, 'roundEnd');
+    endRound(s, 'cleared');
+  }
+
+  // The clock ran out: the round is passed if the quota was delivered (presents still in the field are lost), otherwise it is game over.
+  function checkTime(s, dt) {
+    if (s.phase !== 'play') return;
+    const before = Math.ceil(s.timeLeft);
+    s.timeLeft -= dt;
+    const now = Math.ceil(Math.max(0, s.timeLeft));
+    if (now < before && now <= 5 && now > 0) emit(s, 'tick', { left: now });
+    if (s.timeLeft > 0) return;
+    s.timeLeft = 0;
+    if (s.roundDelivered >= s.cfg.quota) endRound(s, 'time');
+    else gameOver(s, 'time');
   }
 
   // One tick. input = { dir: -1|0|1, jump: bool }. Events for sound/effects accumulate in s.events; the caller clears them.
@@ -330,6 +361,7 @@
     if (s.phase !== 'play') return;
     deliver(s);
     checkRoundEnd(s);
+    checkTime(s, dt);
   }
 
   // A simple stand-in player (used for the title-screen demo and the tests): run to the nearest present, then to the landed sleigh.

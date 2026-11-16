@@ -32,6 +32,53 @@ function run(s, seconds, input, dt) {
   check(L.roundConfig(4).allowance > L.roundConfig(3).allowance, 'allowance grows every third round');
 }
 
+// The clock and the quota: the limit shrinks, the quota is the presents minus what may be lost.
+{
+  const r1 = L.roundConfig(1), r5 = L.roundConfig(5);
+  check(r1.timeLimit === C.START_TIME, 'round 1 has the full time');
+  check(r5.timeLimit < r1.timeLimit, 'later rounds have less time');
+  check(L.roundConfig(500).timeLimit === C.MIN_TIME, 'the clock never gets shorter than the minimum');
+  for (let n = 1; n <= 40; n++) {
+    const r = L.roundConfig(n);
+    check(r.quota >= 1 && r.quota <= r.presents && r.quota === Math.max(1, r.presents - r.allowance), 'quota is presents minus allowance, round ' + n);
+  }
+}
+
+// Running out of time: game over if the quota was not delivered, a passed round if it was.
+{
+  const s = scene();
+  check(near(s.timeLeft, L.roundConfig(1).timeLimit, 0.001), 'the clock starts at the round limit');
+  run(s, 10);
+  check(near(s.timeLeft, L.roundConfig(1).timeLimit - 10, 0.1), 'the clock counts down');
+  const fail = scene();
+  fail.sleigh.phase = 'landed'; fail.sleigh.x = 2600; fail.sleigh.h = 0;
+  L.addPresent(fail, 800, 0, 'ground');                 // something still lying around so the round does not end early
+  fail.timeLeft = 1; fail.roundDelivered = fail.cfg.quota - 1;
+  run(fail, 1.2);
+  check(fail.phase === 'over' && fail.overReason === 'time', 'time runs out short of the quota: game over (time)');
+  const pass = scene();
+  pass.sleigh.phase = 'landed'; pass.sleigh.x = 2600; pass.sleigh.h = 0;
+  L.addPresent(pass, 800, 0, 'ground');
+  pass.timeLeft = 1; pass.roundDelivered = pass.cfg.quota;
+  run(pass, 1.2);
+  check(pass.phase === 'between' && pass.summary.why === 'time' && pass.summary.timeBonus === 0, 'time runs out with the quota met: the round is passed');
+  check(pass.summary.delivered === pass.cfg.quota, 'summary shows the delivered count');
+  const early = scene();
+  early.sleigh.phase = 'landed'; early.sleigh.x = 2600; early.sleigh.h = 0; early.sleigh.xs = [];
+  early.fudge.x = 2600; L.addPresent(early, 2600, 0, 'carried'); early.fudge.load = 1;
+  early.timeLeft = 20.5;
+  run(early, 0.1);
+  check(early.phase === 'between' && early.summary.why === 'cleared' && early.summary.timeBonus === 20 * C.TIME_BONUS, 'clearing early earns a time bonus, got ' + (early.summary && early.summary.timeBonus));
+  const tick = scene();
+  tick.timeLeft = 5.1;
+  let ticks = 0;
+  for (let i = 0; i < 60 * 6; i++) { L.step(tick, none, 1 / 60); ticks += tick.events.filter(e => e.type === 'tick').length; tick.events.length = 0; }
+  check(ticks === 5, 'a tick for each of the last five seconds, got ' + ticks);
+  const paused = scene();
+  L.step(paused, none, 0.016);
+  check(paused.timeLeft < L.roundConfig(1).timeLimit, 'the clock only runs while playing');
+}
+
 // Touching a present puts it in Fudge's cheeks; a heavier load is slower; a load is worth more per present.
 {
   const s = scene();
