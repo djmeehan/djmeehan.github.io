@@ -21,15 +21,15 @@
     DROP_START: 300,
     DROP_END: 2100,
     PRESENT_GRAVITY: 520,
-    MAX_ELVES: 8,
+    MAX_ELVES: 10,
     START_X: 160,
     LUNGE_T: 0.35,         // the double-tap lunge: a short dash that can grab a present back from a fleeing elf
     LUNGE_SPEED: 560,
-    LUNGE_CD: 0.9,
+    LUNGE_CD: 1.3,
     RECOVER_R: 64,
-    START_TIME: 50,        // seconds on the clock in round 1; each round has TIME_STEP less, down to MIN_TIME
-    TIME_STEP: 2,
-    MIN_TIME: 32,
+    START_TIME: 38,        // seconds on the clock in round 1; each round has TIME_STEP less, down to MIN_TIME
+    TIME_STEP: 2.5,
+    MIN_TIME: 24,
     TIME_BONUS: 3,         // points per second left when a round is cleared early
   };
 
@@ -49,12 +49,12 @@
   // How hard round n is: more presents, more and faster elves, a little more slack for stolen presents every third round, and a shrinking
   // clock. The quota is how many presents must be delivered before time runs out (the presents that may be lost are the allowance).
   function roundConfig(n) {
-    const presents = Math.min(5 + 2 * n, 22);
-    const allowance = 3 + Math.floor((n - 1) / 3);
+    const presents = Math.min(6 + 2 * n, 24);
+    const allowance = 2 + Math.floor(n / 3);
     return {
       presents,
-      elves: Math.min(1 + Math.floor(n / 2), C.MAX_ELVES),
-      elfSpeed: Math.min(95 + 14 * n, 215),
+      elves: Math.min(2 + Math.floor((n - 1) / 2), C.MAX_ELVES),
+      elfSpeed: Math.min(128 + 15 * n, 235),
       allowance,
       quota: Math.max(1, presents - allowance),
       timeLimit: Math.max(C.MIN_TIME, C.START_TIME - C.TIME_STEP * (n - 1)),
@@ -63,7 +63,7 @@
 
   // Fudge slows down the more he carries: greed is a risk.
   function fudgeSpeed(load) {
-    return C.FUDGE_SPEED / (1 + 0.09 * load);
+    return C.FUDGE_SPEED / (1 + 0.12 * load);
   }
 
   // Points for one delivery: bigger loads are worth more per present, to reward the risk.
@@ -96,7 +96,7 @@
     s.presents = [];
     s.elves = [];
     s.elfQueue = [];
-    for (let i = 0; i < cfg.elves; i++) s.elfQueue.push(1.5 + i * 2.2);
+    for (let i = 0; i < cfg.elves; i++) s.elfQueue.push(1.0 + i * 1.6);
     s.fudge = { x: C.START_X, h: 0, vh: 0, dir: 1, load: 0, stun: 0, invuln: 0, moving: false, lunge: 0, lungeCd: 0 };
     s.sleigh = { x: -140, h: C.SLEIGH_H, phase: 'fly', xs, dropped: 0, landX: C.DROP_END + 400 + s.rng() * 500 };
   }
@@ -249,7 +249,7 @@
           s.roundStolen++;
           s.stolenTotal++;
           s.elves.splice(s.elves.indexOf(e), 1);
-          s.elfQueue.push(s.time + 3);
+          s.elfQueue.push(s.time + 2);
           emit(s, 'steal');
           if (s.roundStolen > s.cfg.allowance) gameOver(s, 'stolen');
           continue;

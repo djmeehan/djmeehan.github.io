@@ -24,12 +24,12 @@ function run(s, seconds, input, dt) {
 // Difficulty scales up and is capped.
 {
   const r1 = L.roundConfig(1), r5 = L.roundConfig(5), r9 = L.roundConfig(9), r200 = L.roundConfig(200);
-  check(r1.elves === 1, 'round 1 has one elf');
+  check(r1.elves === 2, 'round 1 already has two elves');
   check(r5.elves > r1.elves && r9.elves > r5.elves, 'more elves each few rounds');
   check(r5.presents > r1.presents, 'more presents in later rounds');
   check(r5.elfSpeed > r1.elfSpeed, 'elves get faster');
-  check(r200.elves === C.MAX_ELVES && r200.presents <= 22 && r200.elfSpeed <= 215, 'difficulty is capped');
-  check(L.roundConfig(4).allowance > L.roundConfig(3).allowance, 'allowance grows every third round');
+  check(r200.elves === C.MAX_ELVES && r200.presents <= 24 && r200.elfSpeed <= 235, 'difficulty is capped');
+  check(L.roundConfig(3).allowance > L.roundConfig(2).allowance, 'allowance grows every third round');
 }
 
 // The clock and the quota: the limit shrinks, the quota is the presents minus what may be lost.
@@ -115,7 +115,8 @@ function run(s, seconds, input, dt) {
   s.fudge.x = 100;
   const p = L.addPresent(s, 1500, 0, 'ground');
   const e = L.addElf(s, 1450);
-  run(s, 14.5);   // long enough to leave the field, but before the replacement elf (queued 3s later) arrives
+  e.speed = 140;  // fixed so the timing is exact: it leaves the field after about 9.8s
+  run(s, 10.5);   // long enough to leave, but before the replacement elf (queued 2s after the theft) arrives
   check(p.state === 'stolen', 'the elf got away with the present');
   check(s.roundStolen === 1, 'the theft is counted');
   check(s.elves.length === 0 && s.elfQueue.length === 1, 'the elf has left and will come back later');
