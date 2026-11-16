@@ -10,6 +10,11 @@ Derek's browser games and apps, published with GitHub Pages at https://djmeehan.
 - `games/<name>/`: one folder per game. Plain static games (`index.html` + assets) are served as they are.
 - A game that needs a build (Vite/TypeScript) keeps its source in its folder and is built and deployed by a GitHub Actions workflow (added with the first game that needs it).
 
+## Games
+
+- `games/demo/`: Ball Maze.
+- `games/fudges-festive-frenzy/`: a Christmas side-scroller starring Fudge the hamster (photo cutouts in `assets/`, rules in `logic.js` with tests in `test.js`, drawing and input in `main.js`). Controls: hold the mouse or a finger to run toward it, press high up to jump; arrows/WASD and Space also work. `index.html#bot=12` autoplays 12 seconds ahead (used for screenshots).
+
 ## Adding a game
 
 1. Create `games/<name>/index.html` (and assets).

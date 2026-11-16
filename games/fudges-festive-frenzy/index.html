@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>Fudge's Festive Frenzy</title>
+  <style>
+    :root { --bg: #0b1637; --gold: #ffd166; --text: #f2e9e0; }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; overflow: hidden; overscroll-behavior: none; }
+    body { display: grid; place-items: center; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+    canvas { display: block; touch-action: none; cursor: pointer; }
+    .bar { position: fixed; top: max(8px, env(safe-area-inset-top)); display: flex; gap: 8px; z-index: 2; }
+    #left { left: max(8px, env(safe-area-inset-left)); }
+    #right { right: max(8px, env(safe-area-inset-right)); }
+    .bar a, .bar button { font: inherit; font-size: 14px; color: var(--text); background: rgba(11, 22, 55, 0.7); border: 1px solid rgba(255, 209, 102, 0.6); border-radius: 999px; padding: 6px 14px; text-decoration: none; cursor: pointer; }
+    .bar a:hover, .bar button:hover, .bar a:focus-visible, .bar button:focus-visible { background: rgba(255, 209, 102, 0.25); outline: none; }
+    #rotate { display: none; position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); padding: 8px 14px; border-radius: 999px; background: rgba(11, 22, 55, 0.85); font-size: 14px; z-index: 2; white-space: nowrap; }
+    @media (orientation: portrait) { #rotate { display: block; } }
+  </style>
+</head>
+<body>
+  <canvas id="game" aria-label="Fudge's Festive Frenzy: help Fudge the hamster stuff Santa's presents in his cheeks before the naughty elves steal them"></canvas>
+  <div class="bar" id="left"><a href="../../">&larr; Games</a></div>
+  <div class="bar" id="right"><button id="pause" type="button">Pause</button><button id="mute" type="button">Sound on</button></div>
+  <div id="rotate">Turn your phone sideways for a bigger game</div>
+  <script src="logic.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>

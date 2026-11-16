@@ -3,5 +3,10 @@
     "id": "demo",
     "name": "Ball Maze",
     "description": "Roll the ball through a new random maze each level."
+  },
+  {
+    "id": "fudges-festive-frenzy",
+    "name": "Fudge's Festive Frenzy",
+    "description": "Fudge the hamster stuffs Santa's presents in his cheeks before the naughty elves steal them."
   }
 ]
