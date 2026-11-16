@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Tests and security checks for the games site. Exit 1 on any failure. Run from anywhere: python3 tools/check.py
 
-Checks: layout (every game has an index.html and is linked from the root page), no secrets (guardrails' secretscan over the tree and
+Checks: layout (every game has an index.html and is listed in games.json, which builds the homepage menu), no secrets (guardrails' secretscan over the tree and
 history), no external hosts, no eval/Function/document.write, JavaScript syntax (node --check), and each game's own test.js (node).
 """
+import json
 import pathlib
 import re
 import subprocess
@@ -34,15 +35,26 @@ def game_dirs():
 
 
 def check_layout():
-    root_html = (ROOT / "index.html").read_text()
+    try:
+        manifest = json.loads((ROOT / "games.json").read_text())
+    except (OSError, ValueError) as e:
+        return fail(f"games.json is missing or not valid JSON: {e}")
+    listed = set()
+    for entry in manifest:
+        gid = entry.get("id", "")
+        if not gid or not entry.get("name"):
+            fail(f"games.json: every entry needs an id and a name: {entry}")
+            continue
+        if gid in listed:
+            fail(f"games.json: duplicate id {gid}")
+        listed.add(gid)
+        if not (GAMES / gid / "index.html").is_file():
+            fail(f"games.json lists {gid} but games/{gid}/index.html does not exist")
     for g in game_dirs():
         if not (g / "index.html").is_file():
             fail(f"games/{g.name}: no index.html")
-        if f"games/{g.name}/" not in root_html:
-            fail(f"games/{g.name}: not linked from the root index.html")
-    for name in re.findall(r'href="games/([^/"]+)/"', root_html):
-        if not (GAMES / name / "index.html").is_file():
-            fail(f"root index.html links to games/{name}/ which does not exist")
+        if g.name not in listed:
+            fail(f"games/{g.name}: not listed in games.json (so it would not appear on the homepage)")
 
 
 def check_secrets():

@@ -24,9 +24,9 @@ def tree_hash(game):
 
 def main():
     problems = []
-    rc, dirty = git("status", "--porcelain", "--", "games", "signoff.json", "index.html")
+    rc, dirty = git("status", "--porcelain", "--", "games", "signoff.json", "index.html", "games.json")
     if dirty:
-        problems.append("uncommitted changes in games/, index.html or signoff.json: commit them, then sign off")
+        problems.append("uncommitted changes in games/, index.html, games.json or signoff.json: commit them, then sign off")
     rc, raw = git("show", "HEAD:signoff.json")
     signed = json.loads(raw) if rc == 0 else {}
     rc, games = git("ls-tree", "--name-only", "HEAD", "games/")

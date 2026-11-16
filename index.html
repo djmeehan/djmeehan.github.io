@@ -5,19 +5,39 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Derek's Games</title>
   <style>
-    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #14110f; color: #f2e9e0; font-family: system-ui, sans-serif; }
-    main { max-width: 40rem; padding: 2rem; text-align: center; }
-    h1 { font-weight: 300; letter-spacing: 0.2em; text-transform: uppercase; color: #f2b36b; }
-    ul { list-style: none; padding: 0; }
-    a { color: #f2b36b; }
+    :root { --bg: #14110f; --card: #241d18; --fg: #f2e9e0; --accent: #f2b36b; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--fg); font-family: system-ui, sans-serif; }
+    main { max-width: 60rem; margin: 0 auto; padding: 2rem 16px; }
+    h1 { font-weight: 300; letter-spacing: 0.2em; text-transform: uppercase; color: var(--accent); text-align: center; }
+    #games { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 1rem; margin-top: 2rem; }
+    a.game { display: block; padding: 1.2rem; background: var(--card); border: 2px solid transparent; border-radius: 0.8rem; color: inherit; text-decoration: none; }
+    a.game:hover, a.game:focus-visible { border-color: var(--accent); outline: none; }
+    a.game b { display: block; font-size: 1.25rem; color: var(--accent); margin-bottom: 0.3rem; }
+    a.game span { opacity: 0.75; }
+    #empty { text-align: center; opacity: 0.7; }
   </style>
 </head>
 <body>
   <main>
     <h1>Games</h1>
-    <ul id="games">
-      <li><a href="games/demo/">Demo: Ball Maze</a></li>
-    </ul>
+    <div id="games"></div>
+    <p id="empty" hidden>No games yet.</p>
   </main>
+  <script>
+    fetch('games.json', { cache: 'no-store' }).then(r => r.json()).then(list => {
+      const box = document.getElementById('games');
+      for (const g of list) {
+        const a = document.createElement('a');
+        a.className = 'game';
+        a.href = 'games/' + encodeURIComponent(g.id) + '/';
+        const b = document.createElement('b'); b.textContent = g.name;
+        const s = document.createElement('span'); s.textContent = g.description || '';
+        a.append(b, s);
+        box.append(a);
+      }
+      document.getElementById('empty').hidden = list.length > 0;
+    }).catch(() => { document.getElementById('empty').hidden = false; });
+  </script>
 </body>
 </html>

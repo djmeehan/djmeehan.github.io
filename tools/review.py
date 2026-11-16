@@ -16,11 +16,14 @@ import secrets
 import socketserver
 import subprocess
 import sys
+import time
 import webbrowser
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 TOKEN = secrets.token_urlsafe(24)
 PORT = 8765
+PUBLIC = "https://djmeehan.github.io"
+_fetched = [0.0]
 
 
 def run(cmd, timeout=300):
@@ -42,7 +45,21 @@ def signed():
     return json.loads(f.read_text()) if f.exists() else {}
 
 
+def published(game, tree):
+    """live = origin/main has this exact version; older = origin/main has an earlier version; no = not on origin/main."""
+    rc, remote = git("rev-parse", f"origin/main:games/{game}")
+    if rc:
+        return "no"
+    return "live" if remote == tree else "older"
+
+
 def status():
+    if time.time() - _fetched[0] > 30:
+        _fetched[0] = time.time()
+        try:
+            run(["git", "fetch", "-q", "origin"], timeout=15)
+        except subprocess.TimeoutExpired:
+            pass
     out = []
     rec = signed()
     for g in games():
@@ -55,7 +72,12 @@ def status():
             state = "signed"
         else:
             state = "changed" if g in rec else "unsigned"
-        out.append({"game": g, "state": state})
+        name = g
+        try:
+            name = next((e["name"] for e in json.loads((ROOT / "games.json").read_text()) if e.get("id") == g), g)
+        except (OSError, ValueError):
+            pass
+        out.append({"game": g, "name": name, "state": state, "published": published(g, tree) if rc == 0 else "no"})
     rc, pending = git("status", "--porcelain", "--", "signoff.json")
     rc, ahead = git("rev-list", "--count", "@{u}..HEAD")
     return {"games": out, "unpublished": bool(pending) or ahead not in ("", "0")}
@@ -107,40 +129,42 @@ def publish():
 PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Review games</title><style>
 :root{--bg:#14110f;--fg:#f2e9e0;--accent:#f2b36b;--ok:#5fd38d;--bad:#ff7a70;--card:#241d18}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,sans-serif}
+*{box-sizing:border-box}a.btn{display:inline-block;padding:.5rem 1.1rem;border-radius:.5rem;background:var(--accent);color:#14110f;text-decoration:none}a.btn.alt{background:transparent;color:var(--fg);border:1px solid var(--fg)}.links{display:flex;gap:.6rem;flex-wrap:wrap;align-items:center}body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,sans-serif}
 a{color:var(--accent)}main{max-width:60rem;margin:0 auto;padding:1.5rem 16px}
 h1{font-weight:300;letter-spacing:.15em;text-transform:uppercase;color:var(--accent)}
 .row{display:flex;gap:1rem;align-items:center;justify-content:space-between;background:var(--card);border-radius:.6rem;padding:.8rem 1rem;margin:.6rem 0}
 .tag{padding:.15rem .6rem;border-radius:1rem;font-size:.85rem;border:1px solid}
-.signed{color:var(--ok)}.unsigned,.changed,.uncommitted{color:var(--bad)}
+.signed,.live{color:var(--ok)}.older{color:var(--accent)}.no{color:#9a8f86}.signed{color:var(--ok)}.unsigned,.changed,.uncommitted{color:var(--bad)}
 button{font:inherit;padding:.5rem 1.1rem;border:0;border-radius:.5rem;background:var(--accent);color:#14110f;cursor:pointer}
 button:disabled{opacity:.4;cursor:default}button.alt{background:transparent;color:var(--fg);border:1px solid var(--fg)}
 pre{background:#0d0b0a;padding:.8rem;border-radius:.5rem;overflow:auto;max-height:14rem;white-space:pre-wrap}
 iframe{width:100%;height:70vh;border:1px solid #3a2f27;border-radius:.6rem;background:#000}
 #msg{min-height:1.4rem;margin:.6rem 0}.bar{display:flex;gap:.6rem;flex-wrap:wrap;align-items:center}
 </style></head><body><main>__BODY__</main><script>
-const T="__TOKEN__";
+const T="__TOKEN__";const PUB="__PUBLIC__";
 const post=(p)=>fetch(p,{method:"POST",headers:{"X-Token":T}}).then(async r=>({status:r.status,body:await r.json().catch(()=>({}))}));
 const esc=s=>String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
 __SCRIPT__
 </script></body></html>"""
 
-LIST_BODY = '<h1>Review games</h1><div id="list">Loading...</div><div class="bar"><button id="pub" disabled>Publish all signed games</button></div><div id="msg"></div><pre id="out" hidden></pre>'
+LIST_BODY = '<h1>Review games</h1><p>This is your local homepage: <a href="/" target="_blank">open it as visitors see it</a>.</p><div id="list">Loading...</div><div class="bar"><button id="pub" disabled>Publish all signed games</button></div><div id="msg"></div><pre id="out" hidden></pre>'
 LIST_SCRIPT = """
 async function load(){const s=await (await fetch('/__review/api/status')).json();
- document.getElementById('list').innerHTML=s.games.map(g=>`<div class="row"><span><b>${esc(g.game)}</b> <span class="tag ${g.state}">${g.state}</span></span><a href="/__review/game/${encodeURIComponent(g.game)}"><button class="alt">Play and review</button></a></div>`).join('')||'No games yet.';
+ document.getElementById('list').innerHTML=s.games.map(g=>`<div class="row"><span><b>${esc(g.name)}</b> <span class="tag ${g.state}">${g.state}</span> <span class="tag ${g.published}">${g.published==='live'?'live':g.published==='older'?'older version live':'not published'}</span></span><span class="links"><a class="btn alt" href="/games/${encodeURIComponent(g.game)}/" target="_blank">Play local</a>${g.published!=='no'?`<a class="btn alt" href="${PUB}/games/${encodeURIComponent(g.game)}/" target="_blank">Play public</a>`:''}<a class="btn" href="/__review/game/${encodeURIComponent(g.game)}">Review</a></span></div>`).join('')||'No games yet.';
  const ready=s.games.length&&s.games.every(g=>g.state==='signed')&&s.unpublished;document.getElementById('pub').disabled=!ready;
  if(s.games.length&&s.games.every(g=>g.state==='signed')&&!s.unpublished)document.getElementById('msg').textContent='Everything is signed off and published.';}
 document.getElementById('pub').onclick=async()=>{document.getElementById('msg').textContent='Publishing...';const r=await post('/__review/api/publish');
  const o=document.getElementById('out');o.hidden=false;o.textContent=r.body.output||r.body.error||'';document.getElementById('msg').textContent=r.body.ok?'Pushed. The site updates in a minute or two.':'Not published.';load();};
 load();
 """
-GAME_BODY = '<p><a href="/__review/">&larr; All games</a></p><h1>__NAME__</h1><div class="bar"><span id="state"></span><button id="chk" class="alt">Run checks</button><button id="sign">Sign off</button><button id="pub" class="alt" hidden>Publish</button></div><div id="msg"></div><pre id="out" hidden></pre><iframe src="/games/__NAME__/" title="__NAME__"></iframe>'
+GAME_BODY = '<p><a href="/__review/">&larr; All games</a></p><h1>__NAME__</h1><div class="bar"><span id="state"></span><span id="links" class="links"></span><button id="chk" class="alt">Run checks</button><button id="sign">Sign off</button><button id="pub" class="alt" hidden>Publish</button></div><div id="msg"></div><pre id="out" hidden></pre><iframe id="frame" src="/games/__NAME__/" title="__NAME__" allow="fullscreen; autoplay"></iframe>'
 GAME_SCRIPT = """
 const G="__JSNAME__";const msg=t=>document.getElementById('msg').textContent=t;
 const show=t=>{const o=document.getElementById('out');o.hidden=!t;o.textContent=t||''};
 async function load(){const s=await (await fetch('/__review/api/status')).json();const g=s.games.find(x=>x.game===G);
- document.getElementById('state').innerHTML=`<span class="tag ${g.state}">${g.state}</span>`;
+ document.getElementById('state').innerHTML=`<span class="tag ${g.state}">${g.state}</span> <span class="tag ${g.published}">${g.published==='live'?'live':g.published==='older'?'older version live':'not published'}</span>`;
+ const u=encodeURIComponent(G);document.getElementById('links').innerHTML=`<a class="btn alt" href="/games/${u}/" target="_blank">Full screen (local tab)</a><button class="alt" id="fs">Full screen here</button>`+(g.published!=='no'?`<a class="btn alt" href="${PUB}/games/${u}/" target="_blank">Public version</a>`:'');
+ document.getElementById('fs').onclick=()=>document.getElementById('frame').requestFullscreen();
  document.getElementById('sign').disabled=g.state==='signed'||g.state==='uncommitted';
  document.getElementById('pub').hidden=!(g.state==='signed'&&s.unpublished);}
 document.getElementById('chk').onclick=async()=>{msg('Running checks...');const r=await post('/__review/api/check');show(r.body.output);msg(r.body.ok?'All checks passed.':'Checks failed.');};
@@ -168,7 +192,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.wfile.write(data)
 
     def send_page(self, body, script):
-        page = PAGE.replace("__BODY__", body).replace("__SCRIPT__", script).replace("__TOKEN__", TOKEN).encode()
+        page = PAGE.replace("__BODY__", body).replace("__SCRIPT__", script).replace("__TOKEN__", TOKEN).replace("__PUBLIC__", PUBLIC).encode()
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(page)))
