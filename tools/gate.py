@@ -35,7 +35,7 @@ def main():
         have = tree_hash(game)
         rec = signed.get(game, {}).get("tree")
         if rec != have:
-            problems.append(f"games/{game}: " + ("not signed off" if rec is None else "changed since it was signed off") + f" (python3 tools/signoff.py {game})")
+            problems.append(f"games/{game}: " + ("not signed off" if rec is None else "changed since it was signed off") + f" (python3 tools/review.py, or tools/signoff.py {game})")
     r = subprocess.run([sys.executable, str(ROOT / "tools" / "check.py")], capture_output=True, text=True)
     if r.returncode:
         problems.append("tools/check.py failed:\n" + r.stdout.strip())

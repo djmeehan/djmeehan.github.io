@@ -38,7 +38,7 @@ def main():
         print("\nChecks failed: fix them before signing off.")
         return 1
     rc, tree = git("rev-parse", f"HEAD:games/{game}")
-    print(f"\nChecks passed. Now play it locally:\n  cd {ROOT} && python3 -m http.server 8000\n  open http://localhost:8000/games/{game}/\n")
+    print(f"\nChecks passed. Now play it locally:\n  cd {ROOT} && python3 tools/review.py\n")
     want = f"I played {game}"
     if input(f'Type "{want}" to approve it going live: ').strip() != want:
         print("Not signed off.")
